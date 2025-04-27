@@ -58,8 +58,12 @@ namespace McGurkin.Api.Features.Kv.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    UserProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ProviderId = table.Column<int>(type: "int", nullable: false)
+                    InWatchlist = table.Column<bool>(type: "bit", nullable: false),
+                    IsHidden = table.Column<bool>(type: "bit", nullable: false),
+                    MovieId = table.Column<int>(type: "int", nullable: false),
+                    Stars = table.Column<int>(type: "int", nullable: false),
+                    TvId = table.Column<int>(type: "int", nullable: false),
+                    UserProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -69,8 +73,7 @@ namespace McGurkin.Api.Features.Kv.Data.Migrations
                         column: x => x.UserProfileId,
                         principalSchema: "kv",
                         principalTable: "UserProfiles",
-                        principalColumn: "UserProfileId",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "UserProfileId");
                 });
 
             migrationBuilder.CreateIndex(

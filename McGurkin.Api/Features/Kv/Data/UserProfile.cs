@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace McGurkin.Api.Features.Tmdb.Data;
+namespace McGurkin.Api.Features.Kv.Data;
 
 public class UserProfile
 {
@@ -34,6 +34,14 @@ public class UserRating
 {
     [Key]
     public Guid Id { get; set; }
-    public Guid UserProfileId { get; set; }
-    public int ProviderId { get; set; }
+
+    public bool InWatchlist { get; set; }
+
+    public bool IsHidden { get; set; }
+
+    public int MovieId { get; set; }
+
+    public int Stars { get; set; }
+
+    public int TvId { get; set; }
 }

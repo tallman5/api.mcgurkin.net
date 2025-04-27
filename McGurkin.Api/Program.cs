@@ -9,10 +9,14 @@ using McGurkin.Api.Features.Utilities;
 using McGurkin.Net.Http;
 using McGurkin.Runtime.Serialization;
 using McGurkin.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
+using System.Text;
 using System.Text.Json.Serialization;
 
 // ============================================================================
@@ -38,23 +42,36 @@ builder.Services.AddOpenTelemetry().UseAzureMonitor(options =>
     options.ConnectionString = builder.Configuration["ApplicationInsightsConnectionString"];
 });
 
-var kvServiceConfig = KvServiceConfig.FromConfiguration(builder.Configuration);
-Console.WriteLine($"KvServiceConfig: {kvServiceConfig.DbConnectionString}");
-builder.Services.AddDbContext<KvDbContext>(options =>
-{
-    options.UseSqlServer(kvServiceConfig.DbConnectionString,
-        opt => opt.MigrationsHistoryTable(KvServiceConfig.HISTORY_TABLE, KvServiceConfig.SCHEMA)
-    );
-});
-
+var useInMemoryDatabase = builder.Configuration.GetValue<bool>("UseInMemoryDatabase");
 var iamServiceConfig = IamServiceConfig.FromConfiguration(builder.Configuration);
-Console.WriteLine($"IamServiceConfig: {iamServiceConfig.DbConnectionString}");
-builder.Services.AddDbContext<IamDbContext>(options =>
+var kvServiceConfig = KvServiceConfig.FromConfiguration(builder.Configuration);
+if (useInMemoryDatabase)
 {
-    options.UseSqlServer(iamServiceConfig.DbConnectionString,
-        opt => opt.MigrationsHistoryTable(IamServiceConfig.HISTORY_TABLE, IamServiceConfig.SCHEMA)
-    );
-});
+    builder.Services.AddDbContext<IamDbContext>(options =>
+    {
+        options.UseInMemoryDatabase("IamServiceDb");
+    });
+    builder.Services.AddDbContext<KvDbContext>(options =>
+    {
+        options.UseInMemoryDatabase("KvServiceDb");
+    });
+}
+else
+{
+    builder.Services.AddDbContext<KvDbContext>(options =>
+    {
+        options.UseSqlServer(kvServiceConfig.DbConnectionString,
+            opt => opt.MigrationsHistoryTable(KvServiceConfig.HISTORY_TABLE, KvServiceConfig.SCHEMA)
+        );
+    });
+
+    builder.Services.AddDbContext<IamDbContext>(options =>
+    {
+        options.UseSqlServer(iamServiceConfig.DbConnectionString,
+            opt => opt.MigrationsHistoryTable(IamServiceConfig.HISTORY_TABLE, IamServiceConfig.SCHEMA)
+        );
+    });
+}
 
 builder.Services.AddDefaultIdentity<IamUser>(options => options.SignIn.RequireConfirmedAccount = true)
     .AddRoles<IdentityRole>()
@@ -120,11 +137,60 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = iamServiceConfig.Issuer,
+        ValidAudience = iamServiceConfig.Issuer,
+
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(iamServiceConfig.IssuerKey)),
+
+        NameClaimType = ClaimTypes.NameIdentifier,
+        RoleClaimType = ClaimTypes.Role,
+    };
+
+    // For SignalR, we have to hook the OnMessageReceived event in order to
+    // allow the JWT authentication handler to read the access token from the 
+    // query string when a WebSocket or Server-Sent Events request comes in.
+    //options.Events = new JwtBearerEvents
+    //{
+    //    OnMessageReceived = context =>
+    //    {
+    //        var path = context.HttpContext.Request.Path;
+
+    //        if (path.StartsWithSegments($"/{notificationHubUrl}"))
+    //        {
+    //            Console.WriteLine("Request path: {0}", path);
+    //            var accessToken = context.Request.Query["access_token"];
+    //            if (!string.IsNullOrWhiteSpace(accessToken))
+    //                context.Token = accessToken;
+    //        }
+
+    //        return Task.CompletedTask;
+    //    }
+    //};
+});
+builder.Services.AddAuthorization();
+
 // ============================================================================
 // APP
 // ============================================================================
 
 var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
@@ -146,5 +212,10 @@ app.MapTmdbRoutes();
 app.MapKvRoutes();
 app.MapIamRoutes();
 app.MapUtilitiesRoutes();
+
+using var scope = app.Services.CreateScope();
+var dbContext = scope.ServiceProvider.GetRequiredService<IamDbContext>();
+var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IamUser>>();
+await IamDbContext.SeedAsync(dbContext, userManager, builder.Configuration);
 
 app.Run();

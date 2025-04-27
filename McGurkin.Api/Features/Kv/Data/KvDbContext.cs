@@ -1,5 +1,4 @@
-﻿using McGurkin.Api.Features.Tmdb.Data;
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 
 namespace McGurkin.Api.Features.Kv.Data;
 

@@ -45,7 +45,13 @@ namespace McGurkin.Api.Features.Iam
 
         public async Task<Response<string>> ChangePasswordAsync(ChangePasswordRequest request, ClaimsPrincipal principal)
         {
-            var user = await _userManager.GetUserAsync(principal) ??
+            foreach (var claim in principal.Claims)
+            {
+                Console.WriteLine($"{claim.Type}: {claim.Value}");
+            }
+
+            var user = await _userManager.GetUserAsync(principal);
+            if (null == user)
                 throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.UserNotFound);
 
             var result = await _userManager.ChangePasswordAsync(user, request.OldPassword, request.NewPassword);
@@ -261,33 +267,34 @@ namespace McGurkin.Api.Features.Iam
 
         private async Task<Token> GenerateAuthTokenAsync(IamUser user, DateTimeOffset expires)
         {
-            var accessToken = await GenerateJwtTokenAsync(user, expires);
             var roles = await _userManager.GetRolesAsync(user);
+            var accessToken = GenerateJwtToken(user, roles, expires);
 
             return new Token
             {
                 Expires = expires,
-                Roles = roles.ToArray(),
+                Roles = [.. roles],
                 ScreenName = user.ScreenName,
                 AccessToken = accessToken,
                 UserName = user.UserName ?? user.ScreenName,
             };
         }
 
-        private async Task<string> GenerateJwtTokenAsync(IamUser user, DateTimeOffset expires)
+        private string GenerateJwtToken(IamUser user, IList<string> roles, DateTimeOffset expires)
         {
-            var now = DateTimeOffset.Now;
+            var now = DateTimeOffset.UtcNow;
+
             var claims = new List<Claim>
             {
+                new(ClaimTypes.NameIdentifier, user.Id),
                 new(ClaimTypes.Name, user.UserName ?? user.ScreenName),
                 new(JwtRegisteredClaimNames.Nbf, now.ToUnixTimeSeconds().ToString()),
                 new(JwtRegisteredClaimNames.Exp, expires.ToUnixTimeSeconds().ToString()),
-                new(JwtRegisteredClaimNames.Sub, user.UserName ?? user.ScreenName),
+                new(JwtRegisteredClaimNames.Sub, user.Id),
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new(CustomClaimTypes.ScreenName, user.ScreenName ?? string.Empty)
             };
 
-            var roles = await _userManager.GetRolesAsync(user);
             claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_iamServiceConfig.IssuerKey));
@@ -298,7 +305,8 @@ namespace McGurkin.Api.Features.Iam
                 audience: _iamServiceConfig.Issuer,
                 claims: claims,
                 expires: expires.UtcDateTime,
-                signingCredentials: creds);
+                signingCredentials: creds
+            );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }

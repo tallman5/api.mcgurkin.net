@@ -23,7 +23,7 @@ namespace McGurkin.Api.Features.Kv.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("McGurkin.Api.Features.Tmdb.Data.UserProfile", b =>
+            modelBuilder.Entity("McGurkin.Api.Features.Kv.Data.UserProfile", b =>
                 {
                     b.Property<Guid>("UserProfileId")
                         .ValueGeneratedOnAdd()
@@ -50,7 +50,7 @@ namespace McGurkin.Api.Features.Kv.Data.Migrations
                     b.ToTable("UserProfiles", "kv");
                 });
 
-            modelBuilder.Entity("McGurkin.Api.Features.Tmdb.Data.UserProvider", b =>
+            modelBuilder.Entity("McGurkin.Api.Features.Kv.Data.UserProvider", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -69,16 +69,28 @@ namespace McGurkin.Api.Features.Kv.Data.Migrations
                     b.ToTable("UserProviders", "kv");
                 });
 
-            modelBuilder.Entity("McGurkin.Api.Features.Tmdb.Data.UserRating", b =>
+            modelBuilder.Entity("McGurkin.Api.Features.Kv.Data.UserRating", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("ProviderId")
+                    b.Property<bool>("InWatchlist")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsHidden")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MovieId")
                         .HasColumnType("int");
 
-                    b.Property<Guid>("UserProfileId")
+                    b.Property<int>("Stars")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TvId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("UserProfileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
@@ -88,25 +100,23 @@ namespace McGurkin.Api.Features.Kv.Data.Migrations
                     b.ToTable("UserRatings", "kv");
                 });
 
-            modelBuilder.Entity("McGurkin.Api.Features.Tmdb.Data.UserProvider", b =>
+            modelBuilder.Entity("McGurkin.Api.Features.Kv.Data.UserProvider", b =>
                 {
-                    b.HasOne("McGurkin.Api.Features.Tmdb.Data.UserProfile", null)
+                    b.HasOne("McGurkin.Api.Features.Kv.Data.UserProfile", null)
                         .WithMany("UserProviders")
                         .HasForeignKey("UserProfileId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("McGurkin.Api.Features.Tmdb.Data.UserRating", b =>
+            modelBuilder.Entity("McGurkin.Api.Features.Kv.Data.UserRating", b =>
                 {
-                    b.HasOne("McGurkin.Api.Features.Tmdb.Data.UserProfile", null)
+                    b.HasOne("McGurkin.Api.Features.Kv.Data.UserProfile", null)
                         .WithMany("UserRatings")
-                        .HasForeignKey("UserProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("UserProfileId");
                 });
 
-            modelBuilder.Entity("McGurkin.Api.Features.Tmdb.Data.UserProfile", b =>
+            modelBuilder.Entity("McGurkin.Api.Features.Kv.Data.UserProfile", b =>
                 {
                     b.Navigation("UserProviders");
 
