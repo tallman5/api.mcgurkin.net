@@ -33,14 +33,14 @@ namespace McGurkin.Api.Features.Iam
         IConfiguration configuration,
         IEmailSender emailSender,
         ILogger<IamService> logger,
-        SignInManager<IamUser> signInManager,
-        UserManager<IamUser> userManager) : IIamService
+        SignInManager<IdentityUser> signInManager,
+        UserManager<IdentityUser> userManager) : IIamService
     {
         private readonly IEmailSender _emailSender = emailSender;
         private readonly IamServiceConfig _iamServiceConfig = IamServiceConfig.FromConfiguration(configuration);
         private readonly ILogger<IamService> _logger = logger;
-        private readonly SignInManager<IamUser> _signInManager = signInManager;
-        private readonly UserManager<IamUser> _userManager = userManager;
+        private readonly SignInManager<IdentityUser> _signInManager = signInManager;
+        private readonly UserManager<IdentityUser> _userManager = userManager;
         private static readonly TimeSpan TokenLifetime = TimeSpan.FromDays(30);
 
         public async Task<Response<string>> ChangePasswordAsync(ChangePasswordRequest request, ClaimsPrincipal principal)
@@ -111,7 +111,7 @@ namespace McGurkin.Api.Features.Iam
                 throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.UserNotFound);
 
             var personalData = new Dictionary<string, string>();
-            var personalDataProps = typeof(IamUser).GetProperties()
+            var personalDataProps = typeof(IdentityUser).GetProperties()
                 .Where(p => Attribute.IsDefined(p, typeof(PersonalDataAttribute)));
 
             foreach (var prop in personalDataProps)
@@ -160,11 +160,10 @@ namespace McGurkin.Api.Features.Iam
 
         public async Task<Response<string>> RegisterAsync(RegisterRequest request)
         {
-            var user = new IamUser
+            var user = new IdentityUser
             {
                 UserName = request.Email,
-                Email = request.Email,
-                ScreenName = request.ScreenName
+                Email = request.Email
             };
 
             var result = await _userManager.CreateAsync(user, request.Password);
@@ -265,7 +264,7 @@ namespace McGurkin.Api.Features.Iam
             }
         }
 
-        private async Task<Token> GenerateAuthTokenAsync(IamUser user, DateTimeOffset expires)
+        private async Task<Token> GenerateAuthTokenAsync(IdentityUser user, DateTimeOffset expires)
         {
             var roles = await _userManager.GetRolesAsync(user);
             var accessToken = GenerateJwtToken(user, roles, expires);
@@ -274,25 +273,23 @@ namespace McGurkin.Api.Features.Iam
             {
                 Expires = expires,
                 Roles = [.. roles],
-                ScreenName = user.ScreenName,
                 AccessToken = accessToken,
-                UserName = user.UserName ?? user.ScreenName,
+                UserName = user.UserName,
             };
         }
 
-        private string GenerateJwtToken(IamUser user, IList<string> roles, DateTimeOffset expires)
+        private string GenerateJwtToken(IdentityUser user, IList<string> roles, DateTimeOffset expires)
         {
             var now = DateTimeOffset.UtcNow;
 
             var claims = new List<Claim>
             {
                 new(ClaimTypes.NameIdentifier, user.Id),
-                new(ClaimTypes.Name, user.UserName ?? user.ScreenName),
+                new(ClaimTypes.Name, user.UserName),
                 new(JwtRegisteredClaimNames.Nbf, now.ToUnixTimeSeconds().ToString()),
                 new(JwtRegisteredClaimNames.Exp, expires.ToUnixTimeSeconds().ToString()),
                 new(JwtRegisteredClaimNames.Sub, user.Id),
                 new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new(CustomClaimTypes.ScreenName, user.ScreenName ?? string.Empty)
             };
 
             claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));

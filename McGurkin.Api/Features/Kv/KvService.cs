@@ -5,22 +5,40 @@ namespace McGurkin.Api.Features.Kv;
 
 public interface IKvService
 {
+    Task DeleteUserRatingAsync(string email, Guid userRatingId);
     Task<UserProfile> GetOrCreateMyProfileAsync(string email);
     Task ToggleProviderAsync(string email, int providerId);
-    Task<UserRating> UpsertRatingAsync(string email, UserRating userRating);
+    Task<UserRating> UpsertUserRatingAsync(string email, UserRating userRating);
 }
 
 public class KvService(KvDbContext kvDbContext) : IKvService
 {
     private readonly KvDbContext _kvDbContext = kvDbContext;
 
+    public Task DeleteUserRatingAsync(string email, Guid userRatingId)
+    {
+        var profile = _kvDbContext.UserProfiles
+            .Include(x => x.UserRatings)
+            .FirstOrDefault(x => x.UserEmail == email);
+        if (profile != null)
+        {
+            var userRating = profile.UserRatings?.FirstOrDefault(x => x.UserRatingId == userRatingId);
+            if (userRating != null)
+            {
+                _kvDbContext.UserRatings.Remove(userRating);
+                return _kvDbContext.SaveChangesAsync();
+            }
+        }
+        return Task.CompletedTask;
+    }
+
     public async Task<UserProfile> GetOrCreateMyProfileAsync(string email)
     {
         var returnValue = await _kvDbContext.UserProfiles
             .Where(x => x.UserEmail == email)
-            .AsNoTracking()
             .Include(x => x.UserProviders)
             .Include(x => x.UserRatings)
+            .AsNoTracking()
             .FirstOrDefaultAsync();
 
         if (returnValue == null)
@@ -30,7 +48,7 @@ public class KvService(KvDbContext kvDbContext) : IKvService
                 UserEmail = email
             };
             _kvDbContext.UserProfiles.Add(returnValue);
-            await _kvDbContext.SaveChangesAsync();
+            await _kvDbContext.SaveChangesAsync().ConfigureAwait(false);
         }
 
         return returnValue;
@@ -52,35 +70,33 @@ public class KvService(KvDbContext kvDbContext) : IKvService
                 UserProfileId = profile.UserProfileId,
                 ProviderId = providerId
             };
-            await _kvDbContext.UserProviders.AddAsync(provider);
+            await _kvDbContext.UserProviders.AddAsync(provider).ConfigureAwait(false);
         }
 
-        await _kvDbContext.SaveChangesAsync();
+        await _kvDbContext.SaveChangesAsync().ConfigureAwait(false);
     }
 
-    public async Task<UserRating> UpsertRatingAsync(string email, UserRating userRating)
+    public async Task<UserRating> UpsertUserRatingAsync(string email, UserRating userRating)
     {
-        var profile = await GetOrCreateMyProfileAsync(email);
+        var userProfile = await GetOrCreateMyProfileAsync(email);
+        if (userRating.UserRatingId == Guid.Empty)
+            userRating.UserRatingId = Guid.NewGuid();
+        userRating.UserProfileId = userProfile.UserProfileId;
 
-        var updatedRating = profile.UserRatings?.FirstOrDefault(x => x.Id == userRating.Id);
-        if (updatedRating != null)
+        var existingRating = _kvDbContext.UserRatings
+            .Where(ur => ur.UserRatingId != userRating.UserRatingId)
+            .FirstOrDefault();
+
+        if (existingRating == null)
         {
-            if (null == profile.UserRatings)
-                profile.UserRatings = [];
-            profile.UserRatings.Add(userRating);
+            _kvDbContext.UserRatings.Add(userRating);
         }
         else
         {
-            updatedRating = new UserRating
-            {
-                InWatchlist = userRating.InWatchlist,
-                IsHidden = userRating.IsHidden,
-                MovieId = userRating.MovieId,
-                Stars = userRating.Stars,
-                TvId = userRating.TvId
-            };
+            _kvDbContext.UserRatings.Update(userRating);
         }
+
         await _kvDbContext.SaveChangesAsync();
-        return updatedRating;
+        return userRating;
     }
 }

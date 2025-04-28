@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
-using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -73,7 +72,7 @@ else
     });
 }
 
-builder.Services.AddDefaultIdentity<IamUser>(options => options.SignIn.RequireConfirmedAccount = true)
+builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
     .AddRoles<IdentityRole>()
     .AddDefaultTokenProviders()
     .AddEntityFrameworkStores<IamDbContext>();
@@ -155,9 +154,6 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = iamServiceConfig.Issuer,
 
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(iamServiceConfig.IssuerKey)),
-
-        NameClaimType = ClaimTypes.NameIdentifier,
-        RoleClaimType = ClaimTypes.Role,
     };
 
     // For SignalR, we have to hook the OnMessageReceived event in order to
@@ -215,7 +211,7 @@ app.MapUtilitiesRoutes();
 
 using var scope = app.Services.CreateScope();
 var dbContext = scope.ServiceProvider.GetRequiredService<IamDbContext>();
-var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IamUser>>();
+var userManager = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
 await IamDbContext.SeedAsync(dbContext, userManager, builder.Configuration);
 
 app.Run();

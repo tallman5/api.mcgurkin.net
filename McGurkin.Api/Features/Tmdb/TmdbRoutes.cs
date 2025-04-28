@@ -13,37 +13,14 @@ public static class TmdbRoutes
             .WithTags("The Movie Database");
 
         MapGetGenres(thisGroup);
-        MapGetProviders(thisGroup);
-        MapGetRegions(thisGroup);
-        MapGetMovieProviders(thisGroup);
-
-        MapGetMovie(thisGroup);
-        MapPostDiscoverMovies(thisGroup);
-
         MapGetPerson(thisGroup);
+        MapGetProviders(thisGroup);
+        MapGetMovie(thisGroup);
+        MapGetMovieProviders(thisGroup);
+        MapGetRegions(thisGroup);
 
+        MapPostDiscoverMovies(thisGroup);
         MapPostSearch(thisGroup);
-    }
-
-    private static void MapPostSearch(RouteGroupBuilder thisGroup)
-    {
-        thisGroup.MapPost("search", async (
-            [FromServices] ITmdbService svc,
-            [FromBody] string query,
-            [FromHeader(Name = "Accept-Language")] string? acceptLanguage,
-            [FromQuery] string? lang,
-            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId
-        ) =>
-        {
-            var language = HttpClientUtils.ExtractPrimaryLanguage(lang, acceptLanguage);
-            var returnValue = new Response<SearchMultiResult>
-            {
-                Data = await svc.SearchMultiAsync(query, correlationId ?? Guid.NewGuid(), language)
-            };
-            return Results.Ok(returnValue);
-        })
-        .Produces<Response<SearchMultiResult>>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status500InternalServerError);
     }
 
     private static void MapGetGenres(RouteGroupBuilder thisGroup)
@@ -134,7 +111,7 @@ public static class TmdbRoutes
 
     private static void MapGetPerson(RouteGroupBuilder thisGroup)
     {
-        thisGroup.MapGet("person/{personId}", async (
+        thisGroup.MapGet("people/{personId}", async (
             [FromServices] ITmdbService svc,
             [FromRoute] int personId,
             [FromHeader(Name = "Accept-Language")] string? acceptLanguage,
@@ -223,6 +200,27 @@ public static class TmdbRoutes
             return Results.Ok(returnValue);
         })
         .Produces<Response<Genre[]>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status500InternalServerError);
+    }
+
+    private static void MapPostSearch(RouteGroupBuilder thisGroup)
+    {
+        thisGroup.MapPost("search", async (
+            [FromServices] ITmdbService svc,
+            [FromBody] string query,
+            [FromHeader(Name = "Accept-Language")] string? acceptLanguage,
+            [FromQuery] string? lang,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId
+        ) =>
+        {
+            var language = HttpClientUtils.ExtractPrimaryLanguage(lang, acceptLanguage);
+            var returnValue = new Response<SearchMultiResult>
+            {
+                Data = await svc.SearchMultiAsync(query, correlationId ?? Guid.NewGuid(), language)
+            };
+            return Results.Ok(returnValue);
+        })
+        .Produces<Response<SearchMultiResult>>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status500InternalServerError);
     }
 }

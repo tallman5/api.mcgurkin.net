@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace McGurkin.Api.Features.Iam.Data;
 
-public partial class IamDbContext(DbContextOptions<IamDbContext> options) : IdentityDbContext<IamUser>(options)
+public partial class IamDbContext(DbContextOptions<IamDbContext> options) : IdentityDbContext<IdentityUser>(options)
 {
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -19,14 +19,10 @@ public partial class IamDbContext(DbContextOptions<IamDbContext> options) : Iden
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
-
         builder.HasDefaultSchema(IamServiceConfig.SCHEMA);
-        builder.Entity<IamUser>()
-            .HasIndex(p => new { p.ScreenName })
-            .IsUnique(true);
     }
 
-    public static async Task SeedAsync(IamDbContext context, UserManager<IamUser> userManager, IConfiguration configuration)
+    public static async Task SeedAsync(IamDbContext context, UserManager<IdentityUser> userManager, IConfiguration configuration)
     {
         if (!context.Users.Any())
         {
@@ -38,12 +34,11 @@ public partial class IamDbContext(DbContextOptions<IamDbContext> options) : Iden
                 var existingUser = await userManager.FindByEmailAsync(seedUser.Email);
                 if (existingUser == null)
                 {
-                    var newUser = new IamUser
+                    var newUser = new IdentityUser
                     {
-                        ScreenName = seedUser.ScreenName,
-                        UserName = seedUser.Email,
+                        UserName = seedUser.UserName,
                         Email = seedUser.Email,
-                        EmailConfirmed = true // Important: Set email as confirmed
+                        EmailConfirmed = true
                     };
 
                     var result = await userManager.CreateAsync(newUser, seedUser.Password);

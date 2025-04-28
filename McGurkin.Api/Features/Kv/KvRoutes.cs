@@ -13,9 +13,28 @@ public static class KvRoutes
         var thisGroup = app.MapGroup("my")
             .WithTags("Profile");
 
+        MapDeleteUserRating(thisGroup);
         MapGetMyProfile(thisGroup);
         MapPostToggleProvider(thisGroup);
-        MapPostUpsertRating(thisGroup);
+        MapPostUpsertUserRating(thisGroup);
+    }
+
+    private static void MapDeleteUserRating(RouteGroupBuilder thisGroup)
+    {
+        thisGroup.MapDelete("delete-rating/{userRatingId}", [Authorize] async (
+            ClaimsPrincipal user,
+            [FromServices] IKvService svc,
+            [FromRoute] Guid userRatingId,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId
+        ) =>
+        {
+            var email = GetUserEmail(user);
+            await svc.DeleteUserRatingAsync(email, userRatingId);
+            return Results.Ok();
+        })
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
     private static string GetUserEmail(ClaimsPrincipal user)
@@ -64,7 +83,7 @@ public static class KvRoutes
         .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static void MapPostUpsertRating(RouteGroupBuilder thisGroup)
+    private static void MapPostUpsertUserRating(RouteGroupBuilder thisGroup)
     {
         thisGroup.MapPost("upsert-rating", [Authorize] async (
             ClaimsPrincipal user,
@@ -74,13 +93,10 @@ public static class KvRoutes
         ) =>
         {
             var email = GetUserEmail(user);
-            var returnValue = new Response<UserRating>
-            {
-                Data = await svc.UpsertRatingAsync(email, userRating)
-            };
-            return Results.Ok(returnValue);
+            await svc.UpsertUserRatingAsync(email, userRating);
+            return Results.Ok();
         })
-        .Produces<Response<UserRating>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status500InternalServerError);
     }
