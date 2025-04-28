@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using RegisterRequest = McGurkin.Api.Features.Iam.Data.Requests.RegisterRequest;
-using ResetPasswordRequest = McGurkin.Api.Features.Iam.Data.Requests.ResetPasswordRequest;
 
 namespace McGurkin.Api.Features.Iam;
 
@@ -17,232 +16,267 @@ public static class IamRoutes
             .WithTags("Identity & Access Management")
             .WithOpenApi();
 
-        // Authentication endpoints
-        group.MapPost("signin", SignInAsync)
-            .Produces<Response<Token>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status401Unauthorized)
-            .Produces(StatusCodes.Status500InternalServerError);
-        group.MapPost("register", RegisterAsync)
-            .Produces<Response<string>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-        group.MapGet("guest-token", GetGuestTokenAsync)
-            .Produces<Task<Token>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-
-        // Account management endpoints
-        group.MapPost("change-password", ChangePasswordAsync).RequireAuthorization()
-            .Produces<Response<string>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-        group.MapPost("delete-account", DeleteAccountAsync).RequireAuthorization()
-            .Produces<Response<string>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-        group.MapGet("download-data", DownloadMyDataAsync).RequireAuthorization()
-            .Produces<Response<Dictionary<string, string>>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-
-        // Email confirmation endpoints
-        group.MapGet("confirm-email", ConfirmEmailAsync)
-            .Produces<Response<string>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-        group.MapPost("resend-confirmation", ResendConfirmationAsync)
-            .Produces<Response<string>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-
-        // Password recovery endpoints
-        group.MapPost("forgot-password", ForgotPasswordAsync)
-            .Produces<Response<string>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
-        group.MapPost("reset-password", ResetPasswordAsync)
-            .Produces<Response<string>>(StatusCodes.Status200OK)
-            .Produces(StatusCodes.Status500InternalServerError);
+        MapDeleteAccount(group);
+        MapGetConfirmEmail(group);
+        MapGetGuestToken(group);
+        MapGetMyData(group);
+        MapPostChangePassword(group);
+        MapPostForgotPassword(group);
+        MapPostRegister(group);
+        MapPostResendConfirmation(group);
+        MapPostResetPassword(group);
+        MapPostSignIn(group);
     }
 
-    private static async Task<IResult> SignInAsync(
-        [FromServices] IIamService svc,
-        [FromBody] SignInRequest request,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapDeleteAccount(RouteGroupBuilder group)
     {
-        try
+        group.MapDelete("delete-account", async (
+            ClaimsPrincipal user,
+            [FromServices] IIamService svc,
+            [FromBody] SignInRequest request,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var response = await svc.SignInAsync(request);
-            return Results.Ok(response);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Results.Unauthorized();
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred during sign in.");
-        }
+            try
+            {
+                var response = await svc.DeleteAccountAsync(request, user);
+                return Results.Ok(response);
+            }
+            catch (UnauthorizedAccessException uaex)
+            {
+                return Results.Problem(uaex.Message, statusCode: StatusCodes.Status401Unauthorized);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while deleting the account.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .RequireAuthorization()
+        .Produces<string>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> RegisterAsync(
-        [FromServices] IIamService svc,
-        [FromBody] RegisterRequest request,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapGetConfirmEmail(RouteGroupBuilder group)
     {
-        try
+        group.MapGet("confirm-email", async (
+            [FromServices] IIamService svc,
+            [FromQuery] string userId,
+            [FromQuery] string code,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var response = await svc.RegisterAsync(request);
-            return response.ResponseType == ResponseTypes.Error
-                ? Results.BadRequest(response)
-                : Results.Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred during registration.");
-        }
+            try
+            {
+                var request = new ConfirmEmailRequest
+                {
+                    UserId = userId,
+                    Code = code
+                };
+                var response = await svc.ConfirmEmailAsync(request);
+                return Results.Ok(response);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while confirming the email.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .Produces<string>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> GetGuestTokenAsync(
-        [FromServices] IIamService svc,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId,
-        [FromQuery] bool expired = false)
+    private static void MapGetGuestToken(RouteGroupBuilder group)
     {
-        try
+        group.MapGet("guest-token", async (
+            [FromServices] IIamService svc,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId,
+            [FromQuery] bool expired = false
+            ) =>
         {
-            var token = await svc.GetGuestTokenAsync(expired);
-            return Results.Ok(token);
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred while generating guest token.");
-        }
+            try
+            {
+                var response = await svc.GetGuestTokenAsync(expired);
+                return Results.Ok(response);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while retrieving the guest token.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .Produces<Token>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> ChangePasswordAsync(
-        [FromServices] IIamService svc,
-        [FromBody] ChangePasswordRequest request,
-        ClaimsPrincipal user,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapGetMyData(RouteGroupBuilder group)
     {
-        try
+        group.MapGet("my-data", async (
+            ClaimsPrincipal user,
+            [FromServices] IIamService svc,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var response = await svc.ChangePasswordAsync(request, user);
-            return response.ResponseType == ResponseTypes.Error
-                ? Results.BadRequest(response)
-                : Results.Ok(response);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Results.Unauthorized();
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred while changing password.");
-        }
+            try
+            {
+                var response = await svc.DownloadMyDataAsync(user);
+                return Results.Ok(response);
+            }
+            catch (UnauthorizedAccessException uaex)
+            {
+                return Results.Problem(uaex.Message, statusCode: StatusCodes.Status401Unauthorized);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while retrieving user data.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .RequireAuthorization()
+        .Produces<Dictionary<string, string>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> DeleteAccountAsync(
-        [FromServices] IIamService svc,
-        [FromBody] SignInRequest request,
-        ClaimsPrincipal user,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapPostChangePassword(RouteGroupBuilder group)
     {
-        try
+        group.MapPost("change-password", async (
+            ClaimsPrincipal user,
+            [FromServices] IIamService svc,
+            [FromBody] ChangePasswordRequest request,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var response = await svc.DeleteAccountAsync(request, user);
-            return Results.Ok(response);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Results.Unauthorized();
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred while deleting account.");
-        }
+            try
+            {
+                var response = await svc.ChangePasswordAsync(request, user);
+                return Results.Ok(response);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.Unauthorized();
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while changing password.");
+            }
+        })
+        .RequireAuthorization()
+        .Produces<Response<string>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> DownloadMyDataAsync(
-        [FromServices] IIamService svc,
-        ClaimsPrincipal user,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapPostForgotPassword(RouteGroupBuilder group)
     {
-        try
+        group.MapPost("forgot-password", async (
+            [FromServices] IIamService svc,
+            [FromBody] ForgotPasswordRequest request,
+            [FromQuery] string origin,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var response = await svc.DownloadMyDataAsync(user);
-            return Results.Ok(response);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Results.Unauthorized();
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred while downloading user data.");
-        }
+            try
+            {
+                var response = await svc.ForgotPasswordAsync(request, origin);
+                return Results.Ok(response);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while processing the forgot password request.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .Produces<string>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> ConfirmEmailAsync(
-        [FromServices] IIamService svc,
-        [FromQuery] string userId,
-        [FromQuery] string code,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapPostRegister(RouteGroupBuilder group)
     {
-        try
+        group.MapPost("register", async (
+            [FromServices] IIamService svc,
+            [FromBody] RegisterRequest request,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var request = new ConfirmEmailRequest { UserId = userId, Code = code };
-            var response = await svc.ConfirmEmailAsync(request);
-            return response.ResponseType == ResponseTypes.Error
-                ? Results.BadRequest(response)
-                : Results.Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred during email confirmation.");
-        }
+            try
+            {
+                var response = await svc.RegisterAsync(request);
+                return Results.Ok(response);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while registering the user.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .Produces<string>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> ResendConfirmationAsync(
-        [FromServices] IIamService svc,
-        [FromBody] ResendConfirmationRequest request,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapPostResendConfirmation(RouteGroupBuilder group)
     {
-        try
+        group.MapPost("resend-confirmation", async (
+            [FromServices] IIamService svc,
+            [FromBody] ResendConfirmationRequest request,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var response = await svc.ResendConfirmationAsync(request);
-            return Results.Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred while resending confirmation.");
-        }
+            try
+            {
+                var response = await svc.ResendConfirmationAsync(request);
+                return Results.Ok(response);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while resending the confirmation email.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .Produces<string>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> ForgotPasswordAsync(
-        [FromServices] IIamService svc,
-        [FromBody] ForgotPasswordRequest request,
-        [FromQuery] string origin,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapPostResetPassword(RouteGroupBuilder group)
     {
-        try
+        group.MapPost("reset-password", async (
+            [FromServices] IIamService svc,
+            [FromBody] Data.Requests.ResetPasswordRequest request,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId) =>
         {
-            var response = await svc.ForgotPasswordAsync(request, origin);
-            return Results.Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred while processing password reset.");
-        }
+            try
+            {
+                var response = await svc.ResetPasswordAsync(request);
+                return Results.Ok(response);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred while resetting the password.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+        })
+        .Produces<string>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 
-    private static async Task<IResult> ResetPasswordAsync(
-        [FromServices] IIamService svc,
-        [FromBody] ResetPasswordRequest request,
-        [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid? correlationId)
+    private static void MapPostSignIn(RouteGroupBuilder group)
     {
-        try
+        group.MapPost("signin", async (
+            [FromServices] IIamService svc,
+            [FromBody] SignInRequest request,
+            [FromHeader(Name = Constants.X_CORRELATION_ID)] Guid correlationId) =>
         {
-            var response = await svc.ResetPasswordAsync(request);
-            return response.ResponseType == ResponseTypes.Error
-                ? Results.BadRequest(response)
-                : Results.Ok(response);
-        }
-        catch (Exception ex)
-        {
-            return Results.Problem("An unexpected error occurred while resetting password.");
-        }
+            try
+            {
+                var response = await svc.SignInAsync(request);
+                return Results.Ok(response);
+            }
+            catch (UnauthorizedAccessException uaex)
+            {
+                return Results.Problem(uaex.Message, statusCode: StatusCodes.Status401Unauthorized);
+            }
+            catch
+            {
+                return Results.Problem("An unexpected error occurred during sign in.", statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+        })
+        .Produces<Token>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status500InternalServerError);
     }
 }

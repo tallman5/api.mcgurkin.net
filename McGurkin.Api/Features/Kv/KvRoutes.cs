@@ -21,7 +21,7 @@ public static class KvRoutes
 
     private static void MapDeleteUserRating(RouteGroupBuilder thisGroup)
     {
-        thisGroup.MapDelete("delete-rating/{userRatingId}", [Authorize] async (
+        thisGroup.MapDelete("ratings/{userRatingId}", [Authorize] async (
             ClaimsPrincipal user,
             [FromServices] IKvService svc,
             [FromRoute] Guid userRatingId,
@@ -67,7 +67,7 @@ public static class KvRoutes
 
     private static void MapPostToggleProvider(RouteGroupBuilder thisGroup)
     {
-        thisGroup.MapPost("toggle-provider/{providerId}", [Authorize] async (
+        thisGroup.MapPost("providers/{providerId}", [Authorize] async (
             ClaimsPrincipal user,
             [FromServices] IKvService svc,
             [FromRoute] int providerId,
@@ -85,7 +85,7 @@ public static class KvRoutes
 
     private static void MapPostUpsertUserRating(RouteGroupBuilder thisGroup)
     {
-        thisGroup.MapPost("upsert-rating", [Authorize] async (
+        thisGroup.MapPost("ratings", [Authorize] async (
             ClaimsPrincipal user,
             [FromServices] IKvService svc,
             [FromBody] UserRating userRating,

@@ -15,21 +15,17 @@ public class KvService(KvDbContext kvDbContext) : IKvService
 {
     private readonly KvDbContext _kvDbContext = kvDbContext;
 
-    public Task DeleteUserRatingAsync(string email, Guid userRatingId)
+    public async Task DeleteUserRatingAsync(string email, Guid userRatingId)
     {
-        var profile = _kvDbContext.UserProfiles
-            .Include(x => x.UserRatings)
-            .FirstOrDefault(x => x.UserEmail == email);
-        if (profile != null)
+        var userProfile = await GetOrCreateMyProfileAsync(email);
+        var userRating = userProfile.UserRatings
+            .FirstOrDefault(x => x.UserRatingId == userRatingId);
+
+        if (userRating != null)
         {
-            var userRating = profile.UserRatings?.FirstOrDefault(x => x.UserRatingId == userRatingId);
-            if (userRating != null)
-            {
-                _kvDbContext.UserRatings.Remove(userRating);
-                return _kvDbContext.SaveChangesAsync();
-            }
+            _kvDbContext.UserRatings.Remove(userRating);
+            await _kvDbContext.SaveChangesAsync().ConfigureAwait(false);
         }
-        return Task.CompletedTask;
     }
 
     public async Task<UserProfile> GetOrCreateMyProfileAsync(string email)
@@ -84,7 +80,8 @@ public class KvService(KvDbContext kvDbContext) : IKvService
         userRating.UserProfileId = userProfile.UserProfileId;
 
         var existingRating = _kvDbContext.UserRatings
-            .Where(ur => ur.UserRatingId != userRating.UserRatingId)
+            .Where(ur => ur.UserRatingId == userRating.UserRatingId)
+            .AsNoTracking()
             .FirstOrDefault();
 
         if (existingRating == null)
@@ -93,6 +90,8 @@ public class KvService(KvDbContext kvDbContext) : IKvService
         }
         else
         {
+            if (existingRating.UserProfileId != userProfile.UserProfileId)
+                throw new InvalidOperationException("User rating does not belong to the current user.");
             _kvDbContext.UserRatings.Update(userRating);
         }
 

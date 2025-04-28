@@ -1,6 +1,5 @@
 ﻿using McGurkin.Api.Features.Iam.Data;
 using McGurkin.Api.Features.Iam.Data.Requests;
-using McGurkin.ServiceProviders;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Identity.UI.Services;
@@ -17,16 +16,16 @@ namespace McGurkin.Api.Features.Iam
 {
     public interface IIamService
     {
-        Task<Response<string>> ChangePasswordAsync(ChangePasswordRequest request, ClaimsPrincipal user);
-        Task<Response<string>> ConfirmEmailAsync(ConfirmEmailRequest request);
-        Task<Response<string>> DeleteAccountAsync(SignInRequest request, ClaimsPrincipal user);
-        Task<Response<Dictionary<string, string>>> DownloadMyDataAsync(ClaimsPrincipal user);
-        Task<Response<string>> ForgotPasswordAsync(ForgotPasswordRequest request, string origin);
+        Task<string> ChangePasswordAsync(ChangePasswordRequest request, ClaimsPrincipal user);
+        Task<string> ConfirmEmailAsync(ConfirmEmailRequest request);
+        Task<string> DeleteAccountAsync(SignInRequest request, ClaimsPrincipal user);
+        Task<Dictionary<string, string>> DownloadMyDataAsync(ClaimsPrincipal user);
+        Task<string> ForgotPasswordAsync(ForgotPasswordRequest request, string origin);
         Task<Token> GetGuestTokenAsync(bool expired = false);
-        Task<Response<string>> RegisterAsync(RegisterRequest registerRequest);
-        Task<Response<string>> ResendConfirmationAsync(ResendConfirmationRequest request);
-        Task<Response<string>> ResetPasswordAsync(ResetPasswordRequest request);
-        Task<Response<Token>> SignInAsync(SignInRequest signInRequest);
+        Task<string> RegisterAsync(RegisterRequest registerRequest);
+        Task<string> ResendConfirmationAsync(ResendConfirmationRequest request);
+        Task<string> ResetPasswordAsync(ResetPasswordRequest request);
+        Task<Token> SignInAsync(SignInRequest signInRequest);
     }
 
     public class IamService(
@@ -43,7 +42,7 @@ namespace McGurkin.Api.Features.Iam
         private readonly UserManager<IdentityUser> _userManager = userManager;
         private static readonly TimeSpan TokenLifetime = TimeSpan.FromDays(30);
 
-        public async Task<Response<string>> ChangePasswordAsync(ChangePasswordRequest request, ClaimsPrincipal principal)
+        public async Task<string> ChangePasswordAsync(ChangePasswordRequest request, ClaimsPrincipal principal)
         {
             foreach (var claim in principal.Claims)
             {
@@ -58,20 +57,18 @@ namespace McGurkin.Api.Features.Iam
 
             if (!result.Succeeded)
             {
-                var response = Response<string>.Error("Failed to change password.");
-                response.Errors.AddRange(result.Errors.Select(e => e.Description));
-                return response;
+                return "Failed to change password.";
             }
 
-            return Response<string>.Success("Password changed successfully.");
+            return "Password changed successfully.";
         }
 
-        public async Task<Response<string>> ConfirmEmailAsync(ConfirmEmailRequest request)
+        public async Task<string> ConfirmEmailAsync(ConfirmEmailRequest request)
         {
             var user = await _userManager.FindByIdAsync(request.UserId.ToString());
             if (user == null)
             {
-                return Response<string>.Error(AuthConstants.ErrorMessages.UserNotFound);
+                return AuthConstants.ErrorMessages.UserNotFound;
             }
 
             var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(request.Code));
@@ -79,13 +76,13 @@ namespace McGurkin.Api.Features.Iam
 
             if (!result.Succeeded)
             {
-                return Response<string>.Error(AuthConstants.ErrorMessages.EmailConfirmationFailed);
+                return AuthConstants.ErrorMessages.EmailConfirmationFailed;
             }
 
-            return Response<string>.Success("Thank you for confirming your email!");
+            return "Thank you for confirming your email!";
         }
 
-        public async Task<Response<string>> DeleteAccountAsync(SignInRequest request, ClaimsPrincipal principal)
+        public async Task<string> DeleteAccountAsync(SignInRequest request, ClaimsPrincipal principal)
         {
             var user = await _userManager.GetUserAsync(principal) ??
                 throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.UserNotFound);
@@ -102,10 +99,10 @@ namespace McGurkin.Api.Features.Iam
             }
 
             await _signInManager.SignOutAsync();
-            return Response<string>.Success("Successfully deleted account.");
+            return "Successfully deleted account.";
         }
 
-        public async Task<Response<Dictionary<string, string>>> DownloadMyDataAsync(ClaimsPrincipal principal)
+        public async Task<Dictionary<string, string>> DownloadMyDataAsync(ClaimsPrincipal principal)
         {
             var user = await _userManager.GetUserAsync(principal) ??
                 throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.UserNotFound);
@@ -125,16 +122,16 @@ namespace McGurkin.Api.Features.Iam
                 foreach (var login in logins)
                     personalData.Add($"{login.LoginProvider} external login provider key", login.ProviderKey);
             }
-            return Response<Dictionary<string, string>>.Success(personalData);
+            return personalData;
         }
 
-        public async Task<Response<string>> ForgotPasswordAsync(ForgotPasswordRequest request, string origin)
+        public async Task<string> ForgotPasswordAsync(ForgotPasswordRequest request, string origin)
         {
             var user = await _userManager.FindByEmailAsync(request.Email);
             if (user == null || !await _userManager.IsEmailConfirmedAsync(user))
             {
                 // Don't reveal that the user does not exist or is not confirmed
-                return Response<string>.Success("Please check your email to reset your password.");
+                return "Please check your email to reset your password.";
             }
 
             var code = await _userManager.GeneratePasswordResetTokenAsync(user);
@@ -146,122 +143,7 @@ namespace McGurkin.Api.Features.Iam
                 AuthConstants.EmailTemplates.ResetPasswordSubject,
                 $"Please reset your password by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
 
-            return Response<string>.Success("Please check your email to reset your password.");
-        }
-
-        public async Task<Token> GetGuestTokenAsync(bool expired = false)
-        {
-            var user = await _userManager.FindByEmailAsync("guest@kixvu.com") ??
-                throw new Exception("Guest user not found");
-
-            var expiry = expired ? DateTimeOffset.Now.AddSeconds(1) : DateTimeOffset.Now.AddYears(1);
-            return await GenerateAuthTokenAsync(user, expiry);
-        }
-
-        public async Task<Response<string>> RegisterAsync(RegisterRequest request)
-        {
-            var user = new IdentityUser
-            {
-                UserName = request.Email,
-                Email = request.Email
-            };
-
-            var result = await _userManager.CreateAsync(user, request.Password);
-            if (!result.Succeeded)
-            {
-                var response = Response<string>.Error(AuthConstants.ErrorMessages.RegistrationFailed);
-                response.Errors.AddRange(result.Errors.Select(e => e.Description));
-                return response;
-            }
-
-            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-            var callbackUrl = $"{request.Origin}?userId={user.Id}&code={code}";
-
-            await _emailSender.SendEmailAsync(
-                user.Email,
-                AuthConstants.EmailTemplates.ConfirmEmailSubject,
-                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
-
-            return Response<string>.Success("We've sent you an email to confirm your address.");
-        }
-
-        public async Task<Response<string>> ResendConfirmationAsync(ResendConfirmationRequest request)
-        {
-            var user = await _userManager.FindByEmailAsync(request.Email);
-            if (user == null)
-            {
-                return Response<string>.Success(""); // Don't reveal that user doesn't exist
-            }
-
-            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-            var callbackUrl = $"{request.Origin}?userId={user.Id}&code={code}";
-
-            await _emailSender.SendEmailAsync(
-                request.Email,
-                AuthConstants.EmailTemplates.ConfirmEmailSubject,
-                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
-
-            return Response<string>.Success("");
-        }
-
-        public async Task<Response<string>> ResetPasswordAsync(ResetPasswordRequest request)
-        {
-            var user = await _userManager.FindByEmailAsync(request.Email);
-            if (user == null)
-            {
-                // Don't reveal that the user does not exist
-                return Response<string>.Success("Your password has been reset.");
-            }
-
-            var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(request.Code));
-            var result = await _userManager.ResetPasswordAsync(user, code, request.Password);
-
-            if (!result.Succeeded)
-            {
-                var response = Response<string>.Error(AuthConstants.ErrorMessages.PasswordResetFailed);
-                response.Errors.AddRange(result.Errors.Select(e => e.Description));
-                return response;
-            }
-
-            return Response<string>.Success("Your password has been reset. Please sign in with your new password.");
-        }
-
-        public async Task<Response<Token>> SignInAsync(SignInRequest signInRequest)
-        {
-            try
-            {
-                var signInResult = await _signInManager.PasswordSignInAsync(
-                    signInRequest.Email,
-                    signInRequest.Password,
-                    signInRequest.RememberMe,
-                    lockoutOnFailure: true);
-
-                if (signInResult.Succeeded)
-                {
-                    _logger.LogInformation("User {Email} logged in.", signInRequest.Email);
-                    var user = await _userManager.FindByEmailAsync(signInRequest.Email) ??
-                        throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.UserNotFound);
-
-                    var token = await GenerateAuthTokenAsync(user, DateTimeOffset.Now.Add(TokenLifetime));
-                    return Response<Token>.Success(token);
-                }
-
-                if (signInResult.IsLockedOut)
-                {
-                    _logger.LogWarning("Account {Email} is locked out.", signInRequest.Email);
-                    throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.AccountLockedOut);
-                }
-
-                _logger.LogWarning("Invalid login attempt for {Email}", signInRequest.Email);
-                throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.InvalidCredentials);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error signing in user {Email}", signInRequest.Email);
-                throw;
-            }
+            return "Please check your email to reset your password.";
         }
 
         private async Task<Token> GenerateAuthTokenAsync(IdentityUser user, DateTimeOffset expires)
@@ -274,7 +156,7 @@ namespace McGurkin.Api.Features.Iam
                 Expires = expires,
                 Roles = [.. roles],
                 AccessToken = accessToken,
-                UserName = user.UserName,
+                UserName = user.UserName ?? throw new UnauthorizedAccessException()
             };
         }
 
@@ -285,7 +167,7 @@ namespace McGurkin.Api.Features.Iam
             var claims = new List<Claim>
             {
                 new(ClaimTypes.NameIdentifier, user.Id),
-                new(ClaimTypes.Name, user.UserName),
+                new(ClaimTypes.Name, user.UserName ?? throw new UnauthorizedAccessException()),
                 new(JwtRegisteredClaimNames.Nbf, now.ToUnixTimeSeconds().ToString()),
                 new(JwtRegisteredClaimNames.Exp, expires.ToUnixTimeSeconds().ToString()),
                 new(JwtRegisteredClaimNames.Sub, user.Id),
@@ -306,6 +188,116 @@ namespace McGurkin.Api.Features.Iam
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        public async Task<Token> GetGuestTokenAsync(bool expired = false)
+        {
+            var user = await _userManager.FindByEmailAsync("guest@kixvu.com") ??
+                throw new Exception("Guest user not found");
+
+            var expiry = expired ? DateTimeOffset.Now.AddSeconds(1) : DateTimeOffset.Now.AddYears(1);
+            return await GenerateAuthTokenAsync(user, expiry);
+        }
+
+        public async Task<string> RegisterAsync(RegisterRequest request)
+        {
+            var user = new IdentityUser
+            {
+                UserName = request.UserName,
+                Email = request.Email
+            };
+
+            var result = await _userManager.CreateAsync(user, request.Password);
+            if (!result.Succeeded)
+            {
+                return AuthConstants.ErrorMessages.RegistrationFailed;
+            }
+
+            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+            var callbackUrl = $"{request.Origin}?userId={user.Id}&code={code}";
+
+            await _emailSender.SendEmailAsync(
+                user.Email,
+                AuthConstants.EmailTemplates.ConfirmEmailSubject,
+                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+
+            return "We've sent you an email to confirm your address.";
+        }
+
+        public async Task<string> ResendConfirmationAsync(ResendConfirmationRequest request)
+        {
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+            {
+                return ""; // Don't reveal that user doesn't exist
+            }
+
+            var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+            var callbackUrl = $"{request.Origin}?userId={user.Id}&code={code}";
+
+            await _emailSender.SendEmailAsync(
+                request.Email,
+                AuthConstants.EmailTemplates.ConfirmEmailSubject,
+                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+
+            return "";
+        }
+
+        public async Task<string> ResetPasswordAsync(ResetPasswordRequest request)
+        {
+            var user = await _userManager.FindByEmailAsync(request.Email);
+            if (user == null)
+            {
+                // Don't reveal that the user does not exist
+                return "Your password has been reset.";
+            }
+
+            var code = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(request.Code));
+            var result = await _userManager.ResetPasswordAsync(user, code, request.Password);
+
+            if (!result.Succeeded)
+            {
+                return AuthConstants.ErrorMessages.PasswordResetFailed;
+            }
+
+            return "Your password has been reset. Please sign in with your new password.";
+        }
+
+        public async Task<Token> SignInAsync(SignInRequest signInRequest)
+        {
+            try
+            {
+                var signInResult = await _signInManager.PasswordSignInAsync(
+                    signInRequest.UserName,
+                    signInRequest.Password,
+                    signInRequest.RememberMe,
+                    lockoutOnFailure: true);
+
+                if (signInResult.Succeeded)
+                {
+                    var user = await _userManager.FindByNameAsync(signInRequest.UserName) ??
+                        throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.UserNotFound);
+
+                    var token = await GenerateAuthTokenAsync(user, DateTimeOffset.Now.Add(TokenLifetime));
+                    return token;
+                }
+
+                if (signInResult.IsLockedOut)
+                {
+                    _logger.LogWarning("Account {UserName} is locked out.", signInRequest.UserName);
+                    throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.AccountLockedOut);
+                }
+
+                _logger.LogWarning("Invalid login attempt for {UserName}", signInRequest.UserName);
+                throw new UnauthorizedAccessException(AuthConstants.ErrorMessages.InvalidCredentials);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error signing in user {UserName}", signInRequest.UserName);
+                throw;
+            }
         }
     }
 }
