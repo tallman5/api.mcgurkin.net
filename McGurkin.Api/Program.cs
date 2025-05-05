@@ -2,6 +2,8 @@ using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using McGurkin.Api.Features.Iam;
 using McGurkin.Api.Features.Iam.Data;
+using McGurkin.Api.Features.Kpis;
+using McGurkin.Api.Features.Kpis.Data;
 using McGurkin.Api.Features.Kv;
 using McGurkin.Api.Features.Kv.Data;
 using McGurkin.Api.Features.Tmdb;
@@ -42,32 +44,42 @@ builder.Services.AddOpenTelemetry().UseAzureMonitor(options =>
 });
 
 var useInMemoryDatabase = builder.Configuration.GetValue<bool>("UseInMemoryDatabase");
-var iamServiceConfig = IamServiceConfig.FromConfiguration(builder.Configuration);
+var kpiServiceConfig = KpiServiceConfig.FromConfiguration(builder.Configuration);
 var kvServiceConfig = KvServiceConfig.FromConfiguration(builder.Configuration);
+var iamServiceConfig = IamServiceConfig.FromConfiguration(builder.Configuration);
 if (useInMemoryDatabase)
 {
-    builder.Services.AddDbContext<IamDbContext>(options =>
+    builder.Services.AddDbContext<KpiDbContext>(options =>
     {
-        options.UseInMemoryDatabase("IamServiceDb");
+        options.UseInMemoryDatabase("KpiServiceDb");
     });
     builder.Services.AddDbContext<KvDbContext>(options =>
     {
         options.UseInMemoryDatabase("KvServiceDb");
     });
+    builder.Services.AddDbContext<IamDbContext>(options =>
+    {
+        options.UseInMemoryDatabase("IamServiceDb");
+    });
 }
 else
 {
-    builder.Services.AddDbContext<KvDbContext>(options =>
-    {
-        options.UseSqlServer(kvServiceConfig.DbConnectionString,
-            opt => opt.MigrationsHistoryTable(KvServiceConfig.HISTORY_TABLE, KvServiceConfig.SCHEMA)
-        );
-    });
-
     builder.Services.AddDbContext<IamDbContext>(options =>
     {
         options.UseSqlServer(iamServiceConfig.DbConnectionString,
             opt => opt.MigrationsHistoryTable(IamServiceConfig.HISTORY_TABLE, IamServiceConfig.SCHEMA)
+        );
+    });
+    builder.Services.AddDbContext<KpiDbContext>(options =>
+    {
+        options.UseSqlServer(kpiServiceConfig.DbConnectionString,
+            opt => opt.MigrationsHistoryTable(KpiServiceConfig.HISTORY_TABLE, KpiServiceConfig.SCHEMA)
+        );
+    });
+    builder.Services.AddDbContext<KvDbContext>(options =>
+    {
+        options.UseSqlServer(kvServiceConfig.DbConnectionString,
+            opt => opt.MigrationsHistoryTable(KvServiceConfig.HISTORY_TABLE, KvServiceConfig.SCHEMA)
         );
     });
 }
@@ -103,12 +115,13 @@ builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(o =>
 
 var policyName = "CorePolicy";
 string[] allowedOrigins = [
-        "http://localhost:8000",
-        "http://localhost:9000",
-        "https://localhost:7266",
-        "https://www.kixvu.com",
-        "https://www.mcgurkin.net",
-    ];
+    "http://localhost:5173",
+    "https://localhost:7062",
+    "http://localhost:8000",
+    "http://localhost:9000",
+    "https://www.kixvu.com",
+    "https://www.mcgurkin.net",
+];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(policyName, policy =>
@@ -124,6 +137,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<IEmailSender, EmailSender>();
 builder.Services.AddScoped<IIamService, IamService>();
 builder.Services.AddScoped<ITmdbService, TmdbService>();
+builder.Services.AddScoped<IKpiService, KpiService>();
 builder.Services.AddScoped<IKvService, KvService>();
 
 builder.Services.AddEndpointsApiExplorer();
@@ -205,6 +219,7 @@ app.UseHttpsRedirection();
 
 app.MapApiHealthRoutes();
 app.MapTmdbRoutes();
+app.MapKpiRoutes();
 app.MapKvRoutes();
 app.MapIamRoutes();
 app.MapUtilitiesRoutes();
