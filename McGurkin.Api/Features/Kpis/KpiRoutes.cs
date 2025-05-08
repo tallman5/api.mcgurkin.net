@@ -12,11 +12,13 @@ public static class KpiRoutes
         var group = app.MapGroup("kpis")
             .WithTags("KPIs");
 
-        MapPostAddEpochs(group);
         MapDeleteKpi(group);
         MapGetKpis(group);
         MapGetKpisDevice(group);
         MapGetKpisDeviceKey(group);
+        MapGetRainSensorHistory(group);
+        MapPostAddBulkKpis(group);
+        MapPostAddEpochs(group);
         MapUpsertKpi(group);
     }
 
@@ -37,7 +39,7 @@ public static class KpiRoutes
 
     private static void MapGetKpis(RouteGroupBuilder group)
     {
-        group.MapGet("", async (
+        group.MapGet("", [Authorize] async (
             [FromServices] IKpiService svc
         ) =>
         {
@@ -53,7 +55,7 @@ public static class KpiRoutes
 
     private static void MapGetKpisDevice(RouteGroupBuilder group)
     {
-        group.MapGet("{deviceName}", async (
+        group.MapGet("{deviceName}", [Authorize] async (
             [FromServices] IKpiService svc,
             [FromRoute] string deviceName
         ) =>
@@ -70,7 +72,7 @@ public static class KpiRoutes
 
     private static void MapGetKpisDeviceKey(RouteGroupBuilder group)
     {
-        group.MapGet("{deviceName}/{keyName}", async (
+        group.MapGet("{deviceName}/{keyName}", [Authorize] async (
             [FromServices] IKpiService svc,
             [FromRoute] string deviceName,
             [FromRoute] string keyName
@@ -83,6 +85,39 @@ public static class KpiRoutes
             return Results.Ok(returnValue);
         })
         .Produces<Response<Kpi[]>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status500InternalServerError);
+    }
+
+    private static void MapGetRainSensorHistory(RouteGroupBuilder group)
+    {
+        group.MapGet("rain-history", async (
+            [FromServices] IKpiService svc
+        ) =>
+        {
+            var returnValue = new Response<RainSensorHistory>
+            {
+                Data = await svc.GetRainSensorHistoryAsync()
+            };
+            return Results.Ok(returnValue);
+        })
+        .Produces<Response<Kpi[]>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status500InternalServerError);
+    }
+
+    private static void MapPostAddBulkKpis(RouteGroupBuilder group)
+    {
+        group.MapPost("{deviceName}", [Authorize] async (
+            [FromServices] IKpiService svc,
+            [FromRoute] string deviceName,
+            [FromBody] BulkDeviceRq rq
+        ) =>
+        {
+            await svc.UpsertBulkDeviceKpisAsync(deviceName, rq);
+            return Results.Ok();
+        })
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
         .Produces(StatusCodes.Status500InternalServerError);
     }
 

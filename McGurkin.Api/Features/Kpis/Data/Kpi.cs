@@ -15,5 +15,5 @@ public class Kpi
 
     public required string DeviceName { get; set; }
 
-    public required DateTimeOffset Timestamp { get; set; }
+    public DateTimeOffset Timestamp { get; set; }
 }

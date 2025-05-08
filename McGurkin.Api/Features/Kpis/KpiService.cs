@@ -10,6 +10,8 @@ public interface IKpiService
     Task<Kpi[]> GetKpisAsync();
     Task<Kpi[]> GetKpisByDeviceAsync(string deviceName);
     Task<Kpi[]> GetKpisByDeviceKeyAsync(string deviceName, string keyName);
+    Task<RainSensorHistory> GetRainSensorHistoryAsync();
+    Task UpsertBulkDeviceKpisAsync(string deviceName, BulkDeviceRq rq);
     Task UpsertKpiAsync(Kpi kpi);
 }
 
@@ -45,33 +47,71 @@ public class KpiService(KpiDbContext kpiDbContext) : IKpiService
         }
     }
 
-    public Task<Kpi[]> GetKpisAsync()
+    public async Task<Kpi[]> GetKpisAsync()
     {
-        return _kpiDbContext.Kpis
+        return await _kpiDbContext.Kpis
             .OrderBy(k => k.Timestamp)
             .AsNoTracking()
             .ToArrayAsync();
     }
 
-    public Task<Kpi[]> GetKpisByDeviceAsync(string deviceName)
+    public async Task<Kpi[]> GetKpisByDeviceAsync(string deviceName)
     {
-
-        return _kpiDbContext.Kpis
+        return await _kpiDbContext.Kpis
             .Where(x => x.DeviceName.ToLower() == deviceName.ToLower())
             .OrderBy(x => x.Timestamp)
             .AsNoTracking()
             .ToArrayAsync();
     }
 
-    public Task<Kpi[]> GetKpisByDeviceKeyAsync(string deviceName, string keyName)
+    public async Task<Kpi[]> GetKpisByDeviceKeyAsync(string deviceName, string keyName)
     {
-
-        return _kpiDbContext.Kpis
+        return await _kpiDbContext.Kpis
             .Where(x => x.DeviceName.ToLower() == deviceName.ToLower()
                 && x.KeyName.ToLower() == keyName.ToLower())
             .OrderBy(x => x.Timestamp)
             .AsNoTracking()
             .ToArrayAsync();
+    }
+
+    public async Task<RainSensorHistory> GetRainSensorHistoryAsync()
+    {
+        var kpis = await _kpiDbContext.Kpis
+            .Where(x => x.DeviceName.ToLower() == "mcg-rain-01")
+            .AsNoTracking()
+            .ToArrayAsync();
+
+        var returnValue = new RainSensorHistory
+        {
+            BattHistory = [.. kpis
+                .Where(x => x.KeyName.ToLower() == "batt")
+                .OrderBy(x => x.Timestamp)],
+            TipHistory = [.. kpis
+                .Where(x => x.KeyName.ToLower() == "tip")
+                .OrderBy(x => x.Timestamp)],
+            VoltHistory = [.. kpis
+                .Where(x => x.KeyName.ToLower() == "volt")
+                .OrderBy(x => x.Timestamp)],
+        };
+
+        return returnValue;
+    }
+
+    public async Task UpsertBulkDeviceKpisAsync(string deviceName, BulkDeviceRq rq)
+    {
+        foreach (var bulkKpi in rq.Kpis)
+        {
+            var kpi = new Kpi
+            {
+                Id = Guid.NewGuid(),
+                DeviceName = deviceName,
+                KeyName = bulkKpi.KeyName,
+                KeyValue = bulkKpi.KeyValue,
+                Timestamp = DateTimeOffset.FromUnixTimeSeconds(bulkKpi.Epoch)
+            };
+            _kpiDbContext.Kpis.Add(kpi);
+        }
+        await _kpiDbContext.SaveChangesAsync().ConfigureAwait(false);
     }
 
     public async Task UpsertKpiAsync(Kpi kpi)
