@@ -33,6 +33,9 @@ if (!string.IsNullOrWhiteSpace(vaultUri))
     builder.Configuration.AddAzureKeyVault(keyVaultEndpoint, new DefaultAzureCredential());
 }
 
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+
 builder.Services.Configure<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>(config =>
 {
     config.SetAzureTokenCredential(new DefaultAzureCredential());
@@ -214,8 +217,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("CorePolicy");
-app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseHttpsRedirection();
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 app.MapApiHealthRoutes();
 app.MapTmdbRoutes();

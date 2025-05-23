@@ -4,6 +4,7 @@ using McGurkin.Api.Features.Tmdb.Data;
 using McGurkin.Api.Features.Utilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace McGurkin.Api.Test
 {
@@ -11,9 +12,22 @@ namespace McGurkin.Api.Test
     public sealed class TmdbIntegrationTest
     {
         private readonly TmdbService _service;
+        private readonly ILogger<TmdbService> _logger;
 
         public TmdbIntegrationTest()
         {
+            using var loggerFactory = LoggerFactory.Create(builder =>
+            {
+                builder.AddSimpleConsole(options =>
+                {
+                    options.IncludeScopes = true;
+                    options.SingleLine = true;
+                    options.TimestampFormat = "hh:mm:ss ";
+                });
+                builder.SetMinimumLevel(LogLevel.Information);
+            });
+            _logger = loggerFactory.CreateLogger<TmdbService>();
+
             var configuration = new ConfigurationBuilder()
                 .AddUserSecrets<IamService>()
                 .AddJsonFile("appsettings.json")
@@ -24,7 +38,7 @@ namespace McGurkin.Api.Test
             var provider = services.BuildServiceProvider();
             var httpClientFactory = provider.GetRequiredService<IHttpClientFactory>();
 
-            _service = new TmdbService(configuration, httpClientFactory);
+            _service = new TmdbService(configuration, httpClientFactory, _logger);
         }
 
         [TestMethod]

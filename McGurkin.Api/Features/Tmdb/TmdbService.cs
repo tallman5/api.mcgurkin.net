@@ -3,26 +3,72 @@ using McGurkin.Api.Features.Utilities;
 
 namespace McGurkin.Api.Features.Tmdb;
 
+/// <summary>
+/// Interface for TMDB service operations.
+/// </summary>
 public interface ITmdbService
 {
+    /// <summary>
+    /// Discover movies based on query.
+    /// </summary>
     Task<Movie[]> DiscoverMoviesAsync(DiscoverRequest discoverRequest, Guid correlationId, string language);
+
+    /// <summary>
+    /// Get all movie genres.
+    /// </summary>
     Task<Genre[]> GetGenresAsync(Guid correlationId, string language);
+
+    /// <summary>
+    /// Get details for a specific movie.
+    /// </summary>
     Task<Movie> GetMovieAsync(int movieId, Guid correlationId, string language, bool includeDetails);
+
+    /// <summary>
+    /// Get watch providers for a movie.
+    /// </summary>
     Task<Dictionary<string, CountryWatchProvider>> GetMovieProvidersAsync(int id, Guid correlationId, string language, string region);
+
+    /// <summary>
+    /// Get details for a specific person.
+    /// </summary>
     Task<Person> GetPersonAsync(int personId, Guid correlationId, string language, bool includeDetails);
+
+    /// <summary>
+    /// Get all movie providers.
+    /// </summary>
     Task<ProviderDetails[]> GetProvidersAsync(Guid correlationId, string language);
+
+    /// <summary>
+    /// Get a random person.
+    /// </summary>
     Task<Person> GetRandomPersonAsync(Guid correlationId, string language);
+
+    /// <summary>
+    /// Get all available regions.
+    /// </summary>
     Task<Region[]> GetRegionsAsync(Guid correlationId, string language);
 
+    /// <summary>
+    /// Search movies by query.
+    /// </summary>
     Task<Movie[]> SearchMoviesAsync(string query, Guid correlationId, string language);
+
+    /// <summary>
+    /// Search people by query.
+    /// </summary>
     Task<Person[]> SearchPeopleAsync(string query, Guid correlationId, string language);
+
+    /// <summary>
+    /// Search both movies and people by query.
+    /// </summary>
     Task<SearchMultiResult> SearchMultiAsync(string query, Guid correlationId, string language);
 }
 
-public class TmdbService(IConfiguration configuration, IHttpClientFactory httpClientFactory) : ITmdbService
+public class TmdbService(IConfiguration configuration, IHttpClientFactory httpClientFactory, ILogger<TmdbService> logger) : ITmdbService
 {
     private readonly TmdbServiceConfig _config = TmdbServiceConfig.FromConfiguration(configuration);
     private readonly HttpClient _httpClient = httpClientFactory.CreateClient();
+    private readonly ILogger<TmdbService> _logger = logger;
     protected readonly static Random _random = new();
 
     public async Task<Movie[]> DiscoverMoviesAsync(DiscoverRequest discoverRequest, Guid correlationId, string language)
@@ -31,12 +77,22 @@ public class TmdbService(IConfiguration configuration, IHttpClientFactory httpCl
         var extendedQuery = discoverRequest.GetQueryString() ?? "";
         var url = $"{_config.ApiUrl}/3/discover/movie?api_key={_config.ApiKey}&language={language}{extendedQuery}";
 
-        // Fetch movie IDs (first API call)
-        var rs = await HttpClientUtils.GetAsync<GetMoviesRs>(
-            _httpClient,
-            correlationId,
-            url
-        ).ConfigureAwait(false);
+        GetMoviesRs rs;
+
+        try
+        {
+            // Fetch movie IDs (first API call)
+            rs = await HttpClientUtils.GetAsync<GetMoviesRs>(
+                _httpClient,
+                correlationId,
+                url
+            ).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch movies from TMDB for CorrelationId: {CorrelationId}", correlationId);
+            throw;
+        }
 
         // Early exit if no movies found
         if (rs.results == null || rs.results.Length == 0)
@@ -46,7 +102,15 @@ public class TmdbService(IConfiguration configuration, IHttpClientFactory httpCl
         var region = HttpClientUtils.ExtractLocaleFromLanguageTag(language);
         var providerTasks = rs.results.Select(async movie =>
         {
-            movie.providers = await GetMovieProvidersAsync(movie.id, correlationId, language, region).ConfigureAwait(false);
+            try
+            {
+                movie.providers = await GetMovieProvidersAsync(movie.id, correlationId, language, region).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to fetch providers for movie {MovieId}", movie.id);
+                movie.providers = new Dictionary<string, CountryWatchProvider>();
+            }
         }).ToList();
 
         await Task.WhenAll(providerTasks).ConfigureAwait(false);
